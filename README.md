@@ -37,4 +37,45 @@ authorization code to their own server.
 
 ---
 
+## Lab 2 — Role-Based Authorization ✅
+
+**Goal:** Restrict API endpoints to specific roles, so a valid token isn't
+enough — the user also needs the right permission.
+
+### What I built
+- An `analyst` realm role in Keycloak, assigned to one user but not the other
+- A .NET 8 Minimal API with three endpoints: `/public`, `/protected`, and `/analyst`
+- A claims transformer that flattens Keycloak's nested role structure into
+  standard .NET role claims
+- Policy-based authorization using `RequireRole("analyst")`
+
+### What clicked
+JWTs are **stateless** — the API never calls Keycloak on each request. On
+startup, .NET fetches Keycloak's public key from the JWKS endpoint and caches
+it. Every incoming token is verified locally using that key. No round-trip
+to Keycloak needed.
+
+The JWKS endpoint is intentionally public. The security comes from the fact
+that only Keycloak holds the **private key** used to sign tokens — the public
+key can only verify, never forge.
+
+### What broke
+Keycloak puts realm roles in a nested JSON structure inside the token:
+
+```json
+{
+  "realm_access": {
+    "roles": ["analyst"]
+  }
+}
+```
+
+.NET's auth system expects flat claims, not nested JSON — so `RequireRole`
+returned 403 for everyone, including the analyst user. The fix was a custom
+`IClaimsTransformation` that reads the nested structure on each request and
+adds each role as a standard `ClaimTypes.Role` claim. This is something you'll
+hit in every real Keycloak + .NET project.
+
+---
+
 *More labs coming as I work through them.*
