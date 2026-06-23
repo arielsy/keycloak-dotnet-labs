@@ -1,0 +1,28 @@
+@KeycloakLab3_HostAddress = http://localhost:5276
+
+### 1. Public endpoint (no token)
+GET {{KeycloakLab3_HostAddress}}/public
+Accept: application/json
+
+###
+
+### 2. Protected endpoint (any valid token)
+GET {{KeycloakLab3_HostAddress}}/protected
+Accept: application/json
+Authorization: Bearer {{access_token}}
+
+###
+
+### 3. GET /reports — requires reports:read scope
+GET {{KeycloakLab3_HostAddress}}/reports
+Accept: application/json
+Authorization: Bearer {{access_token}}
+
+###
+
+### 4. POST /reports — requires reports:write scope
+POST {{KeycloakLab3_HostAddress}}/reports
+Accept: application/json
+Authorization: Bearer {{access_token}}
+
+###

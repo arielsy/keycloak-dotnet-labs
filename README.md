@@ -78,4 +78,67 @@ hit in every real Keycloak + .NET project.
 
 ---
 
+## Lab 3 — Client Credentials + Scope-Based Authorization ✅
+
+**Goal:** Authenticate a *service* instead of a user (machine-to-machine), and
+authorize endpoints by **scope** rather than role. This is the pattern behind
+backend services calling each other with no human in the loop.
+
+### What I built
+- A confidential Keycloak client (`lab3-service`) with **Service accounts**
+  enabled — this turns on the `client_credentials` grant
+- Two custom client scopes: `reports:read` and `reports:write`
+- A .NET 8 Minimal API with `/public`, `/protected`, `GET /reports`
+  (needs `reports:read`) and `POST /reports` (needs `reports:write`)
+- Scope-based policies using `RequireAssertion` to check the `scope` claim
+
+### What clicked
+With `client_credentials` there's **no user and no browser redirect** — the
+service POSTs its `client_id` + `client_secret` straight to the token endpoint
+and gets an access token back. The token's `sub` is the service account, not a
+person (`preferred_username` is `service-account-lab3-service`).
+
+The mental model that stuck: **roles describe *who you are*, scopes describe
+*what this token is allowed to do*.** For M2M, scopes are the natural fit.
+
+I also finally internalized the difference between the two failure codes:
+- **401 Unauthorized** → "I don't know who you are" (bad/missing/expired token)
+- **403 Forbidden** → "I know who you are, but you can't do this" (missing scope)
+
+### What broke
+This lab broke in three different places — each one taught something:
+
+1. **Scope not in the token.** Requesting `scope=reports:read reports:write`
+   wasn't enough. The custom scopes had to (a) exist as client scopes, (b) be
+   assigned to `lab3-service`, and (c) have **Include in token scope** turned on.
+   Without that last toggle, the scope name silently never reaches the token.
+
+2. **403 even with the right scope.** Keycloak sends `scope` as a **single
+   space-separated string** (`"reports:read profile email reports:write"`), not
+   as separate claims. So `RequireClaim("scope", "reports:read")` does an exact
+   match against the *whole* string and always fails. The fix was a
+   `RequireAssertion` that splits the string and checks membership:
+
+   ```csharp
+   static bool HasScope(ClaimsPrincipal user, string scope)
+   {
+       var raw = user.FindFirst("scope")?.Value;
+       return raw is not null && raw.Split(' ').Contains(scope);
+   }
+   ```
+
+3. **Audience.** The token's `aud` was `["lab3-service", "account"]`, so the API
+   has to validate against an audience that's actually present — otherwise every
+   call is 401 before scopes even matter.
+
+### Postman gotcha
+Postman's secret scanner flagged the JWT as a "Supabase Service Role API Key"
+(false positive — same `eyJ...` format) and tried to move it into the Vault. That
+left the `{{access_token}}` variable empty, so requests went out as `Bearer ` and
+returned 401. Overriding the secret protection kept the token usable. Also worth
+remembering: these tokens live only **5 minutes** (`expires_in: 300`), so a stale
+copy-pasted token is its own source of 401s.
+
+---
+
 *More labs coming as I work through them.*
