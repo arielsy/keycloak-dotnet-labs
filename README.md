@@ -141,4 +141,24 @@ copy-pasted token is its own source of 401s.
 
 ---
 
+## Lab 4 — Refresh Tokens & Token Lifecycle ✅
+
+**Goal:** The Resource Server verifies tokens offline using Keycloak's public keys (from the JWKS endpoint), so a revocation isn't detected there — it has to wait until the token expires. The solution is to use a pair of tokens — a short-lived access token and a long-lived refresh token — which avoids re-authenticating every time the access token expires.
+
+### What I built
+- I enabled a Direct Access Grant (password grant) for testing purposes — in a real-world scenario it should be Authorization Code + PKCE. In this lab I needed a faster way to test the refresh token, and the focus isn't on how the user obtains the token (that was Lab 1).
+- Set the Access Token Lifespan to 60s so the expiry is observable within the lab.
+- Endpoint `/token-info` reads `exp`, compares it to the current time, and returns how many seconds the token has left. It always returns 200 — an expired token never reaches it, because the auth middleware rejects that with 401 first.
+- Added console logging through `JwtBearerEvents` (with timestamps) so I can watch the auth pipeline live: ✅ validated on a good token vs. ❌ expired → 🚪 401 challenge on a stale one.
+
+### What clicked
+- The pattern of dividing into two separate tokens is deliberate — — it limits the exposure window. You can't kill an access token mid-life here, but revoking the refresh token stops access as soon as the current short-lived token expires. The access token is validated offline, so there's no call to Keycloak on every request — that's faster, but the trade-off is no immediate revocation if a breach occurs: you have to wait out the token's lifetime.
+- Offline (JWKS) is the fast, stateless way but it's blind to revocation until expiry; online validation calls Keycloak's introspection endpoint on every request, so it catches a revoked token immediately — the trade-off being a round-trip each time.
+
+### What broke
+Had to fix the **5-minute tolerance** that `ClockSkew` adds by default on top of the configured lifespan (5 min + 1 min = 6 min). Setting `ClockSkew = TimeSpan.Zero` did the trick, so the 60s I set in Keycloak is actually honored. **Why it exists:** the default tolerates small clock differences between Keycloak and the API. Zero is fine for a lab, but in production you'd keep a small skew (≈30s–2min) so minor clock drift doesn't reject valid tokens.
+
+### Postman gotcha
+My Post-response script saved the tokens with `pm.collectionVariables.set`, but I'd defined the variables in the **environment** ("Lab 4 Local"). Those are two different **scopes**, and the empty environment variable shadowed the one the script set — so `{{access_token}}` went out blank and `/protected` returned 401. Fix: point the script at the same scope I was reading from (`pm.environment.set`), so the tokens are shared across the requests in the collection.
+
 *More labs coming as I work through them.*

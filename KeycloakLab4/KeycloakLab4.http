@@ -1,0 +1,29 @@
+@KeycloakLab4_HostAddress = http://localhost:5277
+@token_endpoint = http://localhost:8081/realms/myrealm/protocol/openid-connect/token
+@client_id = lab4-client
+@username = your-user
+@password = your-password
+
+### 1. Get tokens (password grant → returns access_token AND refresh_token)
+POST {{token_endpoint}}
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password&client_id={{client_id}}&username={{username}}&password={{password}}&scope=openid
+
+### 2. Public endpoint (no token)
+GET {{KeycloakLab4_HostAddress}}/public
+Accept: application/json
+
+### 3. Protected — paste access_token below; works until it expires
+GET {{KeycloakLab4_HostAddress}}/protected
+Authorization: Bearer {{access_token}}
+
+### 4. Token-info — watch remainingSeconds shrink on repeat calls
+GET {{KeycloakLab4_HostAddress}}/token-info
+Authorization: Bearer {{access_token}}
+
+### 5. Refresh — after access token expires, mint a new one (no re-login)
+POST {{token_endpoint}}
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=refresh_token&client_id={{client_id}}&refresh_token={{refresh_token}}
